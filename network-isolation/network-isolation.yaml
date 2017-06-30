@@ -71,3 +71,6 @@ outputs:
   dhcp_pool: 
     description: DHCP pool
     value: { get_attr: [isolated_subnet, allocation_pools] }
+  isolated_net_id:
+    description: Network ID to attach Nova instances
+    value: { get_resource: isolated_net }
