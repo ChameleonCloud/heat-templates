@@ -23,11 +23,11 @@ resources:
       ip_version: 4
 
   # 3. Router
-  #   a. external interface (ext-net for UC)
+  #   a. external interface (public for UC)
   router:
     type: OS::Neutron::Router
     properties:
-      external_gateway_info: { network: ext-net }
+      external_gateway_info: { network: public }
 
   # 3.b. Internal router interface
   router_int:
@@ -36,20 +36,12 @@ resources:
       router_id: { get_resource: router }
       subnet: { get_resource: isolated_subnet }
 
-  # 3.c. Static routes
-  ironic_route:
-    type: OS::Neutron::ExtraRoute
-    properties:
-      destination: 10.140.80.0/24
-      nexthop: { get_param: gateway_ironic }
-      router_id: { get_resource: router }
-
 # The parameters section gathers configuration from the user.
 parameters:
   cidr_net:
     type: string
-    label: Private IP address range in 10.xx.yy.0/24 format
-    description: 'IP range of the isolated network in 10.xx.yy.0/24 format'
+    label: Private IP address range, e.g. 10.xx.yy.0/24
+    description: 'IP range of the isolated network'
 
   dhcp_first:
     type: string
@@ -60,11 +52,6 @@ parameters:
     type: string
     label: Last IP address, e.g. 10.xx.yy.254
     description: 'The last IP address of the DHCP range'
-
-  gateway_ironic:
-    type: string
-    label: Gateway address for Ironic services, i.e. 10.xx.yy.2 if the first IP address is .3
-    description: 'The gateway address must be one less than the first DHCP address, i.e. 10.xx.yy.2 if the first DHCP address is 10.xx.yy.3. This cannot be 10.xx.yy.1.'
 
 # The Outputs section tells users what is available
 outputs:
