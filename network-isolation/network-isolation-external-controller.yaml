@@ -21,7 +21,6 @@ resources:
      key_name: { get_param: key_name }
      networks:
         - network: { get_param: controller_network_name }
-     scheduler_hints: { reservation: { get_param: reservation_id } }
      user_data:
        str_replace:
          template: |
@@ -172,7 +171,6 @@ resources:
           key_name: { get_param: key_name }
           networks:
              - network: { get_resource: of_network }
-          scheduler_hints: { reservation: { get_param: reservation_id } }
           user_data:
 # The parameters section gathers configuration from the user.
 parameters:
@@ -182,12 +180,6 @@ parameters:
     description: Name of a KeyPair to enable SSH access to the instance
     constraints:
     - custom_constraint: nova.keypair
-  reservation_id:
-    label: Reservation
-    type: string
-    description: ID of the Blazar reservation to use for launching instances.
-    constraints:
-    - custom_constraint: blazar.reservation
   controller_network_name:
     type: string
     label: Controller Node Network
@@ -256,7 +248,6 @@ parameter_groups:
   description: General parameters
   parameters:
   - key_name
-  - reservation_id
 
 
 
