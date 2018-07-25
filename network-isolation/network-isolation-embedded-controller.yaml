@@ -1,0 +1,67 @@
+description: Configures network isolation (only on CHI@UC)
+
+# This defines the minimum Heat version required by this template.
+heat_template_version: 2015-10-15
+
+# The resources section defines what OpenStack resources are to be deployed and
+# how they should be configured.
+resources:
+  # 1. Network Name
+  isolated_net:
+    type: OS::Neutron::ProviderNet
+    properties:
+      network_type: vlan
+      physical_network: exogeni
+      shared: false
+
+  # 2. Subnet Name
+  #   a. Subnet IP and CIDR
+  #   b. DNS servers
+  isolated_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network: { get_resource: isolated_net }
+      cidr: { get_param: cidr_net }
+      allocation_pools: [{ "start": { get_param: dhcp_first }, "end": { get_param: dhcp_last } } ]
+      dns_nameservers: [ 130.202.101.6, 130.202.101.37 ]
+      ip_version: 4
+
+  # 3. Router
+  #   a. external interface (public for UC)
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info: { network: public }
+
+  # 3.b. Internal router interface
+  router_int:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: isolated_subnet }
+
+# The parameters section gathers configuration from the user.
+parameters:
+  cidr_net:
+    type: string
+    label: Private IP address range, e.g. 10.xx.yy.0/24
+    description: 'IP range of the isolated network'
+
+  dhcp_first:
+    type: string
+    label: First IP address, e.g. 10.xx.yy.3
+    description: 'The first IP address of the DHCP range'
+
+  dhcp_last:
+    type: string
+    label: Last IP address, e.g. 10.xx.yy.254
+    description: 'The last IP address of the DHCP range'
+
+# The Outputs section tells users what is available
+outputs:
+  dhcp_pool: 
+    description: DHCP pool
+    value: { get_attr: [isolated_subnet, allocation_pools] }
+  isolated_net_id:
+    description: Network ID to attach Nova instances
+    value: { get_resource: isolated_net }
