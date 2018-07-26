@@ -134,8 +134,6 @@ resources:
       dns_nameservers: ["8.8.8.8","130.202.101.6","130.202.101.37"]
       network: { get_resource: of_network }
 
-
-
   of_network:
     type: OS::Neutron::Net
     properties:
@@ -255,5 +253,8 @@ outputs:
   controller_ip:
     description: Public IP address of the NFS server
     value: { get_attr: [controller_floating_ip, ip] }
+  of_network_id:
+    description: Network ID to attach Nova instances
+    value: { get_resource: of_network }
 
 
