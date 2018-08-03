@@ -1,0 +1,42 @@
+heat_template_version: 2015-10-15
+
+description: Heat contextualization mechanisms test
+
+parameters:
+  reservation_id:
+    type: string
+    description: ID of the Blazar reservation to use for launching instances
+    constraints:
+    - custom_constraint: blazar.reservation
+
+resources:
+  test_config:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: |
+        #!/bin/sh
+        echo 'test'
+
+  test_sdg:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: { get_resource: test_config }
+      servers: { get_attr: [heat_test_cluster, refs_map] }
+      signal_transport: HEAT_SIGNAL
+
+  heat_test_cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 2
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: heat-test-%index%
+          image: CC-CentOS7
+          flavor: baremetal
+          networks:
+             - network: sharednet1
+          scheduler_hints: { reservation: { get_param: reservation_id } }
+          user_data_format: SOFTWARE_CONFIG
+          software_config_transport: POLL_SERVER_HEAT
