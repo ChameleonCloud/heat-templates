@@ -4,5 +4,6 @@ via the login server.
 
 This appliance accepts the following parameters:
 
-    key_name: name of a key pair to enable SSH access to the instance (defaults to "default")
+    instance_count: the number of instance nodes to provision (in addition to the login server)
+    key_name: name of a key pair to enable SSH access to the instances (defaults to "default")
     reservation_id: ID of the Blazar reservation to use for launching instances
