@@ -21,6 +21,7 @@ resources:
      key_name: { get_param: key_name }
      networks:
         - network: { get_param: controller_network_name }
+     scheduler_hints: { reservation: { get_param: reservation_id } }
      user_data:
        str_replace:
          template: |
@@ -169,6 +170,7 @@ resources:
           key_name: { get_param: key_name }
           networks:
              - network: { get_resource: of_network }
+          scheduler_hints: { reservation: { get_param: reservation_id } }
           user_data:
 # The parameters section gathers configuration from the user.
 parameters:
@@ -221,6 +223,11 @@ parameters:
     default: 2
     constraints:
       - range: { min: 0 }
+  reservation_id:
+    type: string
+    description: ID of the Blazar reservation to use for launching instances.
+    constraints:
+    - custom_constraint: blazar.reservation
 
 
 
@@ -246,6 +253,7 @@ parameter_groups:
   description: General parameters
   parameters:
   - key_name
+  - reservation_id
 
 
 
@@ -256,5 +264,3 @@ outputs:
   of_network_id:
     description: Network ID to attach Nova instances
     value: { get_resource: of_network }
-
-
