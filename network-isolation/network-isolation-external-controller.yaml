@@ -266,4 +266,4 @@ outputs:
     value: { get_resource: of_network }
   node_ids:
     description: IDs for additional server nodes connected to OpenFlow network
-    value: { get_attr: [nodes, server_id] }
+    value: { get_attr: [nodes, outputs, server_id] }
