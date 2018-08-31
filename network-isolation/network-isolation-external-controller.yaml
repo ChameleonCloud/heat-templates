@@ -264,3 +264,6 @@ outputs:
   of_network_id:
     description: Network ID to attach Nova instances
     value: { get_resource: of_network }
+  node_ids:
+    description: IDs for additional server nodes connected to OpenFlow network
+    value: { get_attr: [nodes, server_id] }

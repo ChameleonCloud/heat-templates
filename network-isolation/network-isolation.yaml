@@ -55,7 +55,7 @@ parameters:
 
 # The Outputs section tells users what is available
 outputs:
-  dhcp_pool: 
+  dhcp_pool:
     description: DHCP pool
     value: { get_attr: [isolated_subnet, allocation_pools] }
   isolated_net_id:
