@@ -1,67 +1,132 @@
-description: Configures network isolation (only on CHI@UC)
+# This describes what is deployed by this template.
+description: OF network with nodes deployed with Heat on Chameleon
 
 # This defines the minimum Heat version required by this template.
-heat_template_version: 2015-10-15
+heat_template_version: ocata
 
 # The resources section defines what OpenStack resources are to be deployed and
 # how they should be configured.
 resources:
-  # 1. Network Name
-  isolated_net:
-    type: OS::Neutron::ProviderNet
-    properties:
-      network_type: vlan
-      physical_network: exogeni
-      shared: false
-
-  # 2. Subnet Name
-  #   a. Subnet IP and CIDR
-  #   b. DNS servers
-  isolated_subnet:
-    type: OS::Neutron::Subnet
-    properties:
-      network: { get_resource: isolated_net }
-      cidr: { get_param: cidr_net }
-      allocation_pools: [{ "start": { get_param: dhcp_first }, "end": { get_param: dhcp_last } } ]
-      dns_nameservers: [ 130.202.101.6, 130.202.101.37 ]
-      ip_version: 4
-
-  # 3. Router
-  #   a. external interface (public for UC)
-  router:
+  of_router_to_ext:
     type: OS::Neutron::Router
     properties:
-      external_gateway_info: { network: public }
+      name: router
+      external_gateway_info:
+        network: public
 
-  # 3.b. Internal router interface
-  router_int:
+  of_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet
+      cidr: { get_param: ip_subnet }
+      allocation_pools: [{ "start": { get_param: dhcp_first }, "end": { get_param: dhcp_last } } ]
+      enable_dhcp: true
+      dns_nameservers: ["8.8.8.8","130.202.101.6","130.202.101.37"]
+      network: { get_resource: of_network }
+
+  of_network:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: of_network_name }
+      shared: false
+      value_specs:
+        'provider:network_type': vlan
+        'provider:physical_network': { get_param: provider }
+
+  router_interface:
     type: OS::Neutron::RouterInterface
     properties:
-      router_id: { get_resource: router }
-      subnet: { get_resource: isolated_subnet }
+      router: { get_resource: of_router_to_ext }
+      subnet: { get_resource: of_subnet }
 
+  nodes:
+    type: OS::Heat::ResourceGroup
+    depends_on: of_network 
+    properties:
+      count: { get_param: node_count }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: node-%index%
+          flavor: baremetal
+          image: CC-CentOS7
+          key_name: { get_param: key_name }
+          networks:
+             - network: { get_resource: of_network }
+          scheduler_hints: { reservation: { get_param: reservation_id } }
+          user_data:
 # The parameters section gathers configuration from the user.
 parameters:
-  cidr_net:
+  key_name:
     type: string
-    label: Private IP address range, e.g. 10.xx.yy.0/24
-    description: 'IP range of the isolated network'
-
+    label: SSH Key
+    description: Name of a KeyPair to enable SSH access to the instance
+    constraints:
+    - custom_constraint: nova.keypair
+  of_network_name:
+    type: string
+    label: OpenFlow Network Name
+    description: Name of the OpenFlow network create.
+  provider:
+    type: string
+    label: Network Provider
+    description: The provider network
+    default: exogeni
+    constraints:
+    - allowed_values: [ physnet1, exogeni ]
+  ip_subnet:
+    type: string
+    label: OpenFlow Network Subnet (cidr)
+    description: Subnet for the OpenFlow network
+    default: 192.168.100.0/24
   dhcp_first:
     type: string
     label: First IP address, e.g. 10.xx.yy.3
     description: 'The first IP address of the DHCP range'
-
   dhcp_last:
     type: string
     label: Last IP address, e.g. 10.xx.yy.254
     description: 'The last IP address of the DHCP range'
+  node_count:
+    type: number
+    label: Number of Additional Nodes
+    description: Number of extra nodes connected to the OpenFlow network.
+    default: 2
+    constraints:
+      - range: { min: 0 }
+  reservation_id:
+    type: string
+    description: ID of the Blazar reservation to use for launching instances.
+    constraints:
+    - custom_constraint: blazar.reservation
 
-# The Outputs section tells users what is available
+
+
+parameter_groups:
+- label: OpenFlow Network Configuration
+  description: OpenFlow Network Configuration
+  parameters:
+  - of_network_name
+  - ip_subnet
+  - provider
+  - dhcp_first
+  - dhcp_last
+- label: Node Configuration
+  description: Extra Nodes connected to the OpenFlow network
+  parameters:
+  - node_count
+- label: General Configuration
+  description: General parameters
+  parameters:
+  - key_name
+  - reservation_id
+
+
+
 outputs:
-  dhcp_pool: 
-    description: DHCP pool
-    value: { get_attr: [isolated_subnet, allocation_pools] }
-  isolated_net_id:
+  of_network_id:
     description: Network ID to attach Nova instances
-    value: { get_resource: isolated_net }
+    value: { get_resource: of_network }
+  node_ids:
+    description: IDs for additional server nodes connected to OpenFlow network
+    value: { get_attr: [nodes, refs] }
