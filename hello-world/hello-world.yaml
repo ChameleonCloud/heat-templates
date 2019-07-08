@@ -24,10 +24,10 @@ resources:
       pool: public
 
   login_server_ip_association:
-    type: OS::Nova::FloatingIPAssociation
+    type: OS::Neutron::FloatingIPAssociation
     properties:
       floating_ip: { get_resource: login_server_floating_ip }
-      server_id: { get_resource: login_server }
+      port_id: { get_attr: [login_server, addresses, sharednet1, 0, port] }
 
   # Define a set of instances that can be accessed via login server
   instances:
