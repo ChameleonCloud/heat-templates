@@ -1,6 +1,31 @@
 description: Configures Jupyter Notebook server with external IP
 
-heat_template_version: 2015-10-15
+heat_template_version: 2018-08-31
+
+parameters:
+  key_name:
+    type: string
+    description: Name of a KeyPair to enable SSH access to the instance
+    default: default
+    constraints:
+    - custom_constraint: nova.keypair
+  network_name:
+    type: string
+    description: Name of the reserved Neutron network
+    default: jupyter_net
+  floating_ip:
+    type: string
+    description: Address of the reserved Floating IP
+  reservation_id:
+    type: string
+    description: ID of the Blazar reservation to use for launching instances.
+    constraints:
+    - custom_constraint: blazar.reservation
+  network_cidr:
+    type: string
+    label: Private IP address range, e.g. 10.xx.yy.0/24
+    description: 'IP range of the isolated network'
+    default: 10.100.0.0/24
 
 resources:
   subnet:
@@ -33,7 +58,7 @@ resources:
       user_data: |
         #!/bin/bash
         curl -L https://github.com/ChameleonCloud/heat-templates/archive/master.tar.gz \
-          tar -C /srv -xv jupyter
+          | tar -C /srv -xvz --strip-components=1 heat-templates-master/jupyter
         pushd /srv/jupyter
         exec user_data.sh
 
@@ -42,31 +67,3 @@ resources:
     properties:
       floatingip_id: { get_param: floating_ip }
       port_id: { get_attr: [jupyterhub, addresses, { get_param: network_name }, 0, port] }
-
-parameters:
-  key_name:
-    type: string
-    description: Name of a KeyPair to enable SSH access to the instance
-    default: default
-    constraints:
-    - custom_constraint: nova.keypair
-  network_name:
-    type: string
-    description: Name of the reserved Neutron network
-    constraints:
-    - custom_constraint: neutron.network
-  floating_ip:
-    type: string
-    description: Address of the reserved Floating IP
-    constraints:
-    - custom_constraint: neutron.floatingip
-  reservation_id:
-    type: string
-    description: ID of the Blazar reservation to use for launching instances.
-    constraints:
-    - custom_constraint: blazar.reservation
-  network_cidr:
-    type: string
-    label: Private IP address range, e.g. 10.xx.yy.0/24
-    description: 'IP range of the isolated network'
-    default: 10.100.0.0/24

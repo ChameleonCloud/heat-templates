@@ -11,7 +11,7 @@ services:
       # Bind Docker socket on the host so we can connect to the daemon from
       # within the container
       - "/var/run/docker.sock:/var/run/docker.sock:rw"
-      - "./jupyterhub_config.py:/etc/jupyterhub/jupyterhub_config.py"
+      - "./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py"
     environment:
       # All containers will join this network
       DOCKER_NETWORK_NAME: jupyterhub_default
@@ -21,3 +21,5 @@ services:
       DOCKER_NOTEBOOK_IMAGE: docker.chameleoncloud.org/jupyterhub-user:latest
       # Keystone authentication will happen against this auth URL
       OS_AUTH_URL: https://chi.uc.chameleoncloud.org:5000/v3
+      # Encrytion key for JupyterHub authentication state
+      JUPYTERHUB_CRYPT_KEY: ${JUPYTERHUB_CRYPT_KEY}
