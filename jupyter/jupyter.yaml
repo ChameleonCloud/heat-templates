@@ -1,0 +1,72 @@
+description: Configures Jupyter Notebook server with external IP
+
+heat_template_version: 2015-10-15
+
+resources:
+  subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network: { get_param: network_name }
+      cidr: { get_param: network_cidr }
+      ip_version: 4
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info: { network: public }
+
+  router_int:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: subnet }
+
+  jupyterhub:
+    type: OS::Nova::Server
+    properties:
+      flavor: baremetal
+      image: CC-CentOS7
+      key_name: { get_param: key_name }
+      networks:
+        - network: { get_param: network_name }
+      scheduler_hints: { reservation: { get_param: reservation_id } }
+      user_data: |
+        #!/bin/bash
+        curl -L https://github.com/ChameleonCloud/heat-templates/archive/master.tar.gz \
+          tar -C /srv -xv jupyter
+        pushd /srv/jupyter
+        exec user_data.sh
+
+  jupyterhub_ip:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_param: floating_ip }
+      port_id: { get_attr: [jupyterhub, addresses, { get_param: network_name }, 0, port] }
+
+parameters:
+  key_name:
+    type: string
+    description: Name of a KeyPair to enable SSH access to the instance
+    default: default
+    constraints:
+    - custom_constraint: nova.keypair
+  network_name:
+    type: string
+    description: Name of the reserved Neutron network
+    constraints:
+    - custom_constraint: neutron.network
+  floating_ip:
+    type: string
+    description: Address of the reserved Floating IP
+    constraints:
+    - custom_constraint: neutron.floatingip
+  reservation_id:
+    type: string
+    description: ID of the Blazar reservation to use for launching instances.
+    constraints:
+    - custom_constraint: blazar.reservation
+  network_cidr:
+    type: string
+    label: Private IP address range, e.g. 10.xx.yy.0/24
+    description: 'IP range of the isolated network'
+    default: 10.100.0.0/24

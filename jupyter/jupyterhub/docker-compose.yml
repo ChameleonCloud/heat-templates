@@ -1,0 +1,23 @@
+version: "2"
+
+services:
+  hub:
+    restart: always
+    image: docker.chameleoncloud.org/jupyterhub:latest
+    container_name: jupyterhub
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind Docker socket on the host so we can connect to the daemon from
+      # within the container
+      - "/var/run/docker.sock:/var/run/docker.sock:rw"
+      - "./jupyterhub_config.py:/etc/jupyterhub/jupyterhub_config.py"
+    environment:
+      # All containers will join this network
+      DOCKER_NETWORK_NAME: jupyterhub_default
+      # The container directory that will hold the user's working files
+      DOCKER_NOTEBOOK_DIR: /work
+      # JupyterHub will spawn this Notebook image for users
+      DOCKER_NOTEBOOK_IMAGE: docker.chameleoncloud.org/jupyterhub-user:latest
+      # Keystone authentication will happen against this auth URL
+      OS_AUTH_URL: https://chi.uc.chameleoncloud.org:5000/v3
