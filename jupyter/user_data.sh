@@ -30,7 +30,7 @@ done
 
 # Generate crypto stuffs
 openssl_conf="${OPENSSL_CONF:-NOTFOUND}"
-for path in /etc/ssl/openssl.cnf /etc/pki/tls/openssl.conf; do
+for path in /etc/ssl/openssl.cnf /etc/pki/tls/openssl.cnf; do
   if [[ -f "$path" ]]; then openssl_conf="$path"; break; fi
 done
 openssl req -newkey rsa:4096 -nodes -x509 -days 90 \

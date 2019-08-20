@@ -25,13 +25,16 @@ echo
 timeout 300 bash -c 'until [[ $(blazar lease-show $0 -f value -c status) == "ACTIVE" ]]; do sleep 1; done' "$lease_name" \
     && echo "Lease started successfully!"
 
-fip_reservation_id=$(blazar lease-show "$lease_name" -f json \
-  | jq -r '.reservations' \
-  | jq -rs 'map(select(.resource_type=="virtual:floatingip"))[].id')
+reservations=$(blazar lease-show "$lease_name" -f json \
+  | jq -r '.reservations')
+host_reservation_id=$(jq -rs 'map(select(.resource_type=="physical:host"))[].id' <<<"$reservations")
+fip_reservation_id=$(jq -rs 'map(select(.resource_type=="virtual:floatingip"))[].id' <<<"$reservations")
 
-fip=$(openstack floating ip list --tags "reservation:$fip_reservation_id" \
-  -f value -c "Floating IP Address")
+fip_id=$(openstack floating ip list --tags "reservation:$fip_reservation_id" \
+  -f value -c "ID")
 
 echo
-echo "Floating IP: $fip"
-echo "Network name: $network_name"
+echo "Stack parameters:"
+echo "- floating_ip=$fip_id"
+echo "- network_name=$network_name"
+echo "- reservation_id=$host_reservation_id"
