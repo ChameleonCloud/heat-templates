@@ -13,6 +13,14 @@ curl -L "https://github.com/docker/compose/releases/download/1.24.1/docker-compo
   -o /usr/local/bin/docker-compose \
   && chmod +x /usr/local/bin/docker-compose
 
-export JUPYTERHUB_CRYPT_KEY=$(openssl rand -hex 32)
+pushd jupyterhub
 
-(cd jupyterhub && docker-compose up -d)
+# Generate crypto stuffs
+export JUPYTERHUB_CRYPT_KEY=$(openssl rand -hex 32)
+openssl req -newkey rsa:4096 -nodes -x509 -days 90 \
+  -subj "/C=US/ST=Illinois/L=Chicago/O=Chameleon/CN=JupyterHub Appliance" \
+  -config <(printf "\n[SAN]\nsubjectAltName=IP:$FLOATING_IP") \
+  -out nginx/default.crt \
+  -keyout nginx/default.key
+
+docker-compose up -d

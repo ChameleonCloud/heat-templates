@@ -55,15 +55,24 @@ resources:
       networks:
         - network: { get_param: network_name }
       scheduler_hints: { reservation: { get_param: reservation_id } }
-      user_data: |
-        #!/bin/bash
-        curl -L https://github.com/ChameleonCloud/heat-templates/archive/master.tar.gz \
-          | tar -C /srv -xvz --strip-components=1 heat-templates-master/jupyter
-        pushd /srv/jupyter
-        exec user_data.sh
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash
+            export FLOATING_IP=$floating_ip
+            curl -L https://github.com/ChameleonCloud/heat-templates/archive/master.tar.gz \
+              | tar -C /srv -xvz --strip-components=1 heat-templates-master/jupyter
+            pushd /srv/jupyter
+            exec user_data.sh
+          params:
+            $floating_ip: { get_attr: [jupyterhub_ip, floating_ip_address] }
 
   jupyterhub_ip:
+    type: OS::Neutron::FloatingIP
+    external_id: { get_param: floating_ip }
+
+  jupyterhub_ip_assoc:
     type: OS::Neutron::FloatingIPAssociation
     properties:
-      floatingip_id: { get_param: floating_ip }
+      floatingip_id: { get_resource: jupyterhub_ip }
       port_id: { get_attr: [jupyterhub, addresses, { get_param: network_name }, 0, port] }

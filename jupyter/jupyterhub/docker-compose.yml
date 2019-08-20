@@ -1,17 +1,25 @@
 version: "2"
 
 services:
+  nginx:
+    restart: always
+    image: nginx:mainline
+    container_name: nginx
+    ports:
+      - "8000:8000"
+    volumes:
+      - "./nginx:/etc/nginx:ro"
   hub:
     restart: always
     image: docker.chameleoncloud.org/jupyterhub:latest
     container_name: jupyterhub
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       # Bind Docker socket on the host so we can connect to the daemon from
       # within the container
       - "/var/run/docker.sock:/var/run/docker.sock:rw"
-      - "./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py"
+      - "./jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro"
     environment:
       # All containers will join this network
       DOCKER_NETWORK_NAME: jupyterhub_default
