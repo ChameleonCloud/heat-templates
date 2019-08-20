@@ -15,6 +15,9 @@ from tornado.httputil import url_concat
 
 c = get_config()
 
+# Must match name of container
+c.JupyterHub.hub_ip = 'hub'
+
 ##################
 # Logging
 ##################

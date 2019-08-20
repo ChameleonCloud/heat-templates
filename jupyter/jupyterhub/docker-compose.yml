@@ -3,15 +3,16 @@ version: "2"
 services:
   nginx:
     restart: always
-    image: nginx:mainline
+    image: ${NGINX_IMAGE}
     container_name: nginx
     ports:
-      - "8000:8000"
+      - "80:80"
+      - "443:443"
     volumes:
       - "./nginx:/etc/nginx:ro"
   hub:
     restart: always
-    image: docker.chameleoncloud.org/jupyterhub:latest
+    image: ${JUPYTERHUB_IMAGE}
     container_name: jupyterhub
     expose:
       - "8000"
@@ -26,7 +27,7 @@ services:
       # The container directory that will hold the user's working files
       DOCKER_NOTEBOOK_DIR: /work
       # JupyterHub will spawn this Notebook image for users
-      DOCKER_NOTEBOOK_IMAGE: docker.chameleoncloud.org/jupyterhub-user:latest
+      DOCKER_NOTEBOOK_IMAGE: ${NOTEBOOK_IMAGE}
       # Keystone authentication will happen against this auth URL
       OS_AUTH_URL: https://chi.uc.chameleoncloud.org:5000/v3
       # Encrytion key for JupyterHub authentication state
