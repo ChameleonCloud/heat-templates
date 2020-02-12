@@ -15,8 +15,8 @@ blazar lease-create \
   --physical-reservation min=1,max=1,resource_properties="[\"=\", \"\$node_type\", \"$node_type\"]" \
   --reservation resource_type=network,network_name="$network_name",resource_properties='["==","$physical_network","physnet1"]' \
   --reservation resource_type=virtual:floatingip,network_id="$public_network_id",amount=1 \
-  --start-date "$(date +'%Y-%m-%d %H:%M')" \
-  --end-date "$(date +'%Y-%m-%d %H:%M' -d'+1 day')" \
+  --start-date "$(date -u +'%Y-%m-%d %H:%M')" \
+  --end-date "$(date -u +'%Y-%m-%d %H:%M' -d'+1 day')" \
   "$lease_name"
 
 echo "Waiting for lease to start"
