@@ -1,0 +1,635 @@
+# This describes what is deployed by this template.
+description: Hadoop master and workers deployed with Heat on Chameleon
+
+# This defines the minimum Heat version required by this template.
+heat_template_version: 2015-10-15
+
+# The resources section defines what OpenStack resources are to be deployed and
+# how they should be configured.
+resources:
+  router_to_ext:
+    type: OS::Neutron::Router
+    properties:
+      name: hadoop_router
+      external_gateway_info:
+        network: public
+
+  hadoop_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: hadoop_subnet
+      cidr: { get_param: network_cidr }
+      enable_dhcp: true
+      network: { get_resource: hadoop_network }
+
+  hadoop_network:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: network_name }
+
+  hadoop_router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router_to_ext }
+      subnet: { get_resource: hadoop_subnet }
+
+  hadoop_master_floating_ip:
+    type: OS::Nova::FloatingIP
+    properties:
+      pool: public
+
+  hadoop_workers:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: hadoop_worker_count }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: worker-%index%
+          flavor: baremetal
+          image: CC-CentOS7
+          key_name: { get_param: key_name }
+          networks:
+             - network: { get_resource: hadoop_network }
+          scheduler_hints: { reservation: { get_param: reservation_id } }
+          user_data:
+            str_replace:
+              template: |
+                #!/bin/bash
+
+                exec &>/tmp/boot.log
+
+                echo nameserver 8.8.8.8 >> /etc/resolv.conf  
+
+                CWD=`pwd`
+                cd /usr/lib
+                mkdir -m 770 hadoop
+
+                #Download hadoop
+                wget -r --no-parent -nH --cut-dirs=3 -A 'hadoop-*.*.*.tar.gz' -R 'hadoop-*.*.*-*' http://apache.javapipe.com/hadoop/common/stable/            
+                HADOOP_DL=$(ls -t hadoop-*.tar.gz | head -n1)
+                HADOOP_LATEST="${HADOOP_DL::-7}" 
+
+                #Create and configure users
+
+                cat > users <<EOF
+                hadoop
+                hdfs
+                yarn
+                mapred
+                EOF
+    
+                cat users | while read line; do
+    
+                  useradd "$line"
+      
+                  mkdir /home/"$line"/.ssh
+                  echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpLETezO6hUHgiLjHPEXXN6kkV9vBFqYAc4ha6OOoUYztx66mC3Sb590DZvn1wbUFZTJHMqRVG4x08MAsNBpBnuFsGQCg7Rw7cpW8uA20kJpAAUFtTJZO+gSu41QFMSLpX34tTqXBC7HMzmHZOGPtMzgt8fj2IhkZXq7o3mFWDct0GM7j5ShT3nzFkG8FTalLhPk/htRu3XYojOuWZJoVS0ZGVCkHuP2IJ0EzFEhDaplrXTVTujIEOpdCehlupFcWTCaZ/p8vil646M+JYX9pj6ijihn1XfC/c0w3cO+3neOaBhA+bvISvELI/JOcuUfCHsTv626Fpjw59wv6VcInH '$line'@Node0" >> /home/"$line"/.ssh/authorized_keys
+      
+                  echo ""  > /home/"$line"/.ssh/id_rsa
+                  cat > /home/"$line"/.ssh/id_rsa  <<EOF
+                -----BEGIN RSA PRIVATE KEY-----
+                MIIEogIBAAKCAQEAqSxE3szuoVB4Ii4xzxF1zepJFfbwRamAHOIWujjqFGM7ceup
+                gt0m+fdA2b59cG1BWUyRzKkVRuMdPDALDQaQZ7hbBkAoO0cO3KVvLgNtJCaQAFBb
+                UyWTvoEruNUBTEi6V9+LU6lwQuxzM5h2Thj7TM4LfH49iIZGV6u6N5hVg3LdBjO4
+                +UoU958xZBvBU2pS4T5P4bUbt12KIzrlmSaFUtGRlQpB7j9iCdBMxRIQ2qZa101U
+                7oyBDqXQnoZbqRXFkwmmf6fL4peuOjPiWF/aY+oo4oZ9V3wv3NMN3Dvt53jmgYQP
+                m7yErxCyPyTnLlHwh7E7+tuhaY8OfcL+lXCJxwIDAQABAoIBADgng6zZJZTSWy4t
+                W0c6qnnxfNUXpOXav7XWrmieH8Uos0C7UwcnVZq/of0lKAo7meeEbRkcPv3KwZeK
+                8wAd360uGrjWbwROL/a5y0/gv0eyrTYNdmMBJCumQNcXjVi/A2vLvjnFEoiEaDEG
+                OK7vx+rUside2BoLSCotzKBLpob8/YyEM0HrKUw/R31SNCKg3IoP49RApXj3ReEk
+                8Jry3CzR48vjzu2TnZ74V/V4IN+goehcRTNHX00k6eQj7GhYV5b0TdblAaXZcKjB
+                809PQHrUHS5Ub21KB1o4NyQkqIfDJ1R8jdYxrJniFp2fCfW9oj8xv53qmM4B7dXo
+                zDWThDECgYEA0GyBNdZNAWbb5e+3hYomyVT0H4N0iyT9MARG3k9SF+TJOtdrWxH9
+                2FNXuMiktD/abXp8Coqy0RpsdgyDnpoVr7R0l5jULtTBFx/xrZRNoryHpb/QbuZ7
+                fKdWgEDjmFphB1clXUz5Bj0Y+8nIwEns18ULSswGOhzRe9fsM1xiofMCgYEAz8oX
+                D27K9EUKhHmewAxUVAQ5RJV2OtXGQKZwlVo3kixRz4eQOrPWpbau6VpboppzCZ4U
+                m8JLDYzaEXqeQd5XwebSMfS/+mkxGnRAsvNZIjArIdU8SNZUyUheDuKjPbROyquD
+                RHr4Ro15FW3hLog7rHZAL9bmpZeZfoDDNegeGd0CgYBlMTkutWRf2NvM8K0uxdt9
+                BqUcI8vSvtu6k2kBCIv4E9lrmymBZuPTQuulSK1G4nWfj8dnqt2Uznp4eizxNShw
+                TXIKJGZocl1pZ9YEC6wB5f0KCW4eWgL8i5Zg4KBf2Qmg8buvZ+7EC6f0n4y7Z2j5
+                fa602wfu8Qz4TuZcLW+p5wKBgCLCSJdBTlwMTJUajy7LITQovLe3VN7EsfRQo1ao
+                j9E47rqLj9nyCX8RDzNj9R4/Pe0m74Wau9lZbYUtANo96mo6RYEr0w19mUQ2nDgT
+                Mx7f9ecj94CrseU14N4WlX4V8nQ+uqey9mM++TlXdyrEiU7xPQ2DonOi539c5MrY
+                uGhVAoGADSYen+9Z2Diwp7NLh3RwJgyccodyQiK5zmZ9U1nKgt5Gush5mnVCzS6i
+                CMBg/5oEw/+R5t0OoVOsI2/S2GA3RNhzGfzLOtiv3pzah9Ma9J6yeH4PwBB8SICl
+                jlHv/FXpW8SqRseSJlDCQoXTamhROXK8sKQ18Eb6gvKMRMDYERM=
+                -----END RSA PRIVATE KEY-----
+                EOF
+                  
+                  MY_IP=`ifconfig eno1 | grep netmask | tr -s ' ' | cut -d " " -f 3`
+                  echo ""  > /home/"$line"/.ssh/config
+                  cat > /home/"$line"/.ssh/config <<EOF
+                Host `echo $MY_IP  | sed 's/.[0-9][0-9]*$//g'`.* 0.0.0.0 master worker*
+                   StrictHostKeyChecking no
+                   UserKnownHostsFile=/dev/null
+                EOF
+
+                  chown -R "$line":"$line" /home/"$line"/.ssh
+                  chmod 600 /home/"$line"/.ssh/*
+                  
+                  echo "export JAVA_HOME=/usr/lib/jvm/jre" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_HOME=/usr/lib/${HADOOP_LATEST}" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_INSTALL=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_MAPRED_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_COMMON_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_HDFS_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_YARN_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+                  echo "export HADOOP_COMMON_LIB_NATIVE_DIR=\$HADOOP_HOME/lib/native" >> /home/"$line"/.bashrc
+                  echo "export PATH=\$PATH:\$HADOOP_HOME/sbin:\$HADOOP_HOME/bin" >> /home/"$line"/.bashrc
+                  echo "export JAVA_LIBRARY_PATH=\$HADOOP_HOME/lib/native:\$JAVA_LIBRARY_PATH" >> /home/"$line"/.bashrc
+    
+                  done
+                
+                #A better way to setup /etc/hosts is needed
+                chmod 666 /etc/hosts
+
+                #install iptables
+                yum install iptables-services
+                systemctl enable iptables
+                
+                # Flush all current rules from iptables#
+                iptables -F
+                iptables -F -t nat
+                iptables --delete-chain
+                
+                # Set access for localhost
+                iptables -A INPUT -i lo -j ACCEPT -m comment --comment "loopback"
+                iptables -A OUTPUT -o lo -j ACCEPT --comment "loopback"
+                
+                # Subnet open access
+                iptables -A INPUT -s 192.168.100.0/24 -j ACCEPT -m comment --comment "subnet"
+                iptables -A OUTPUT -s 192.168.100.0/24 -j ACCEPT -m comment --comment "subnet"
+                
+                #drop icmp
+                iptables -A INPUT -p icmp --icmp-type any -j DROP -m comment --comment "ping"
+                
+                # Accept packets belonging to established and related connections
+                iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT -m comment --comment "established"
+                
+                # Allow ssh
+                iptables -A INPUT -m state --state NEW -m tcp -p tcp --dport 22 -j ACCEPT -m comment --comment "ssh"
+                
+                # Lock everything down
+                iptables -P INPUT DROP
+                iptables -P FORWARD DROP
+                iptables -P OUTPUT ACCEPT
+
+                #setup hadoop
+                
+                yum install -y vim tzdata-java java-1.8.0-openjdk
+
+                tar -zxvf hadoop-*.*.*.tar.gz
+
+                install -Dv /dev/null $HADOOP_LATEST/logs/hadoop_boot.log
+                HADOOP_LOG='$HADOOP_LATEST/logs/hadoop_boot.log'
+
+                #Set permissions
+                chown -R hadoop:hadoop /usr/lib/$HADOOP_LATEST /usr/lib/hadoop
+                chmod -R 770 /usr/lib/$HADOOP_LATEST
+                gpasswd -M hadoop,hdfs,yarn,mapred,cc,ccadmin hadoop           
+     
+                HADOOP_CONF_DIR=/usr/lib/${HADOOP_LATEST}/etc/hadoop
+                CORE_SITE_FILE=${HADOOP_CONF_DIR}/core-site.xml
+                HDFS_SITE_FILE=${HADOOP_CONF_DIR}/hdfs-site.xml
+                MAPRED_SITE_FILE=${HADOOP_CONF_DIR}/mapred-site.xml
+                YARN_SITE_FILE=${HADOOP_CONF_DIR}/yarn-site.xml
+                WORKERS_FILE=${HADOOP_CONF_DIR}/workers
+
+                echo ""  > $CORE_SITE_FILE
+                cat > $CORE_SITE_FILE   <<EOF
+                <?xml version="1.0" encoding="UTF-8"?>
+                <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+                <configuration>
+                <property>
+                  <name>fs.default.name</name>
+                    <value>hdfs://master:9000</value>
+                </property>
+                </configuration>
+                EOF
+                
+                echo ""  > $HDFS_SITE_FILE
+                cat > $HDFS_SITE_FILE   <<EOF
+                <?xml version="1.0" encoding="UTF-8"?>
+                <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+                <configuration>
+                <property>
+                 <name>dfs.replication</name>
+                 <value>2</value>
+                </property>
+                <property>
+                  <name>dfs.name.dir</name>
+                    <value>file:///usr/lib/hadoop/hadoopdata/hdfs/namenode</value>
+                </property>
+                <property>
+                  <name>dfs.data.dir</name>
+                    <value>file:///usr/lib/hadoop/hadoopdata/hdfs/datanode</value>
+                </property>
+                </configuration>
+                EOF
+                
+                echo ""  > $MAPRED_SITE_FILE
+                cat > $MAPRED_SITE_FILE   <<EOF
+                <configuration>
+                <property>
+                  <name>mapreduce.framework.name</name>
+                    <value>yarn</value>
+                </property>
+                <property>
+                  <name>yarn.app.mapreduce.am.env</name>
+                    <value>HADOOP_MAPRED_HOME=/usr/lib/hadoop-3.2.0</value>
+                </property>
+                <property>
+                  <name>mapreduce.map.env</name>
+                    <value>HADOOP_MAPRED_HOME=/usr/lib/hadoop-3.2.0</value>
+                </property>
+                <property>
+                  <name>mapreduce.reduce.env</name>
+                    <value>HADOOP_MAPRED_HOME=/usr/lib/hadoop-3.2.0</value>
+                </property>
+                </configuration>
+                EOF
+                
+                echo ""  > $YARN_SITE_FILE
+                cat > $YARN_SITE_FILE  <<EOF
+                <?xml version="1.0"?>
+                <configuration>
+                  <property>
+                    <name>yarn.resourcemanager.resource-tracker.address</name>
+                    <value>master:8031</value>
+                  </property>
+                  <property>
+                    <name>yarn.resourcemanager.address</name>
+                    <value>master:8032</value>
+                  </property>
+                  <property>
+                    <name>yarn.resourcemanager.scheduler.address</name>
+                    <value>master:8030</value>
+                  </property>
+                  <property>
+                    <name>yarn.resourcemanager.admin.address</name>
+                    <value>master:8033</value>
+                  </property>
+                  <property>
+                    <name>yarn.resourcemanager.webapp.address</name>
+                    <value>master:8088</value>
+                  </property>
+                <property>
+                  <name>yarn.nodemanager.aux-services</name>
+                    <value>mapreduce_shuffle</value>
+                 </property>
+                  <property>
+                    <name>yarn.nodemanager.vmem-check-enabled</name>
+                    <value>false</value>
+                  </property>
+                  <property>
+                    <name>yarn.nodemanager.pmem-check-enabled</name>
+                    <value>true</value>
+                  </property>
+                <property>
+                  <name>yarn.nodemanager.vmem-pmem-ratio</name>
+                    <value>2.1</value>
+                 </property>               
+                
+                </configuration>
+                EOF
+                
+                cd $CWD
+ 
+              params:
+                $worker_count: { get_param: hadoop_worker_count }
+
+  hadoop_master:
+    type: OS::Nova::Server
+    properties:
+      name: master
+      flavor: baremetal
+      image: CC-CentOS7
+      key_name: { get_param: key_name }
+      networks:
+         - network: { get_resource: hadoop_network }
+      scheduler_hints: { reservation: { get_param: reservation_id } }
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash
+
+            exec &>/tmp/boot.log
+
+            echo nameserver 8.8.8.8 >> /etc/resolv.conf
+
+            echo $worker_ips > /tmp/client_ips.txt
+            echo $worker_names > /tmp/client_names.txt
+
+            #download hadoop
+
+            CWD=`pwd`
+            cd /usr/lib
+            mkdir -m 770 hadoop
+
+            wget -r --no-parent -nH --cut-dirs=3 -A 'hadoop-*.*.*.tar.gz' -R 'hadoop-*.*.*-*' http://apache.javapipe.com/hadoop/common/stable/ 
+            HADOOP_DL=$(ls -t hadoop-*.tar.gz | head -n1)
+            HADOOP_LATEST="${HADOOP_DL::-7}"   
+
+            #Create and configure users
+
+            cat > users <<EOF
+            hadoop
+            hdfs
+            yarn
+            mapred
+            EOF
+
+            cat users | while read line; do
+
+              useradd "$line"
+  
+              mkdir /home/"$line"/.ssh
+              echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCpLETezO6hUHgiLjHPEXXN6kkV9vBFqYAc4ha6OOoUYztx66mC3Sb590DZvn1wbUFZTJHMqRVG4x08MAsNBpBnuFsGQCg7Rw7cpW8uA20kJpAAUFtTJZO+gSu41QFMSLpX34tTqXBC7HMzmHZOGPtMzgt8fj2IhkZXq7o3mFWDct0GM7j5ShT3nzFkG8FTalLhPk/htRu3XYojOuWZJoVS0ZGVCkHuP2IJ0EzFEhDaplrXTVTujIEOpdCehlupFcWTCaZ/p8vil646M+JYX9pj6ijihn1XfC/c0w3cO+3neOaBhA+bvISvELI/JOcuUfCHsTv626Fpjw59wv6VcInH '$line'@Node0" >> /home/"$line"/.ssh/authorized_keys
+  
+              echo ""  > /home/"$line"/.ssh/id_rsa
+              cat > /home/"$line"/.ssh/id_rsa  <<EOF
+            -----BEGIN RSA PRIVATE KEY-----
+            MIIEogIBAAKCAQEAqSxE3szuoVB4Ii4xzxF1zepJFfbwRamAHOIWujjqFGM7ceup
+            gt0m+fdA2b59cG1BWUyRzKkVRuMdPDALDQaQZ7hbBkAoO0cO3KVvLgNtJCaQAFBb
+            UyWTvoEruNUBTEi6V9+LU6lwQuxzM5h2Thj7TM4LfH49iIZGV6u6N5hVg3LdBjO4
+            +UoU958xZBvBU2pS4T5P4bUbt12KIzrlmSaFUtGRlQpB7j9iCdBMxRIQ2qZa101U
+            7oyBDqXQnoZbqRXFkwmmf6fL4peuOjPiWF/aY+oo4oZ9V3wv3NMN3Dvt53jmgYQP
+            m7yErxCyPyTnLlHwh7E7+tuhaY8OfcL+lXCJxwIDAQABAoIBADgng6zZJZTSWy4t
+            W0c6qnnxfNUXpOXav7XWrmieH8Uos0C7UwcnVZq/of0lKAo7meeEbRkcPv3KwZeK
+            8wAd360uGrjWbwROL/a5y0/gv0eyrTYNdmMBJCumQNcXjVi/A2vLvjnFEoiEaDEG
+            OK7vx+rUside2BoLSCotzKBLpob8/YyEM0HrKUw/R31SNCKg3IoP49RApXj3ReEk
+            8Jry3CzR48vjzu2TnZ74V/V4IN+goehcRTNHX00k6eQj7GhYV5b0TdblAaXZcKjB
+            809PQHrUHS5Ub21KB1o4NyQkqIfDJ1R8jdYxrJniFp2fCfW9oj8xv53qmM4B7dXo
+            zDWThDECgYEA0GyBNdZNAWbb5e+3hYomyVT0H4N0iyT9MARG3k9SF+TJOtdrWxH9
+            2FNXuMiktD/abXp8Coqy0RpsdgyDnpoVr7R0l5jULtTBFx/xrZRNoryHpb/QbuZ7
+            fKdWgEDjmFphB1clXUz5Bj0Y+8nIwEns18ULSswGOhzRe9fsM1xiofMCgYEAz8oX
+            D27K9EUKhHmewAxUVAQ5RJV2OtXGQKZwlVo3kixRz4eQOrPWpbau6VpboppzCZ4U
+            m8JLDYzaEXqeQd5XwebSMfS/+mkxGnRAsvNZIjArIdU8SNZUyUheDuKjPbROyquD
+            RHr4Ro15FW3hLog7rHZAL9bmpZeZfoDDNegeGd0CgYBlMTkutWRf2NvM8K0uxdt9
+            BqUcI8vSvtu6k2kBCIv4E9lrmymBZuPTQuulSK1G4nWfj8dnqt2Uznp4eizxNShw
+            TXIKJGZocl1pZ9YEC6wB5f0KCW4eWgL8i5Zg4KBf2Qmg8buvZ+7EC6f0n4y7Z2j5
+            fa602wfu8Qz4TuZcLW+p5wKBgCLCSJdBTlwMTJUajy7LITQovLe3VN7EsfRQo1ao
+            j9E47rqLj9nyCX8RDzNj9R4/Pe0m74Wau9lZbYUtANo96mo6RYEr0w19mUQ2nDgT
+            Mx7f9ecj94CrseU14N4WlX4V8nQ+uqey9mM++TlXdyrEiU7xPQ2DonOi539c5MrY
+            uGhVAoGADSYen+9Z2Diwp7NLh3RwJgyccodyQiK5zmZ9U1nKgt5Gush5mnVCzS6i
+            CMBg/5oEw/+R5t0OoVOsI2/S2GA3RNhzGfzLOtiv3pzah9Ma9J6yeH4PwBB8SICl
+            jlHv/FXpW8SqRseSJlDCQoXTamhROXK8sKQ18Eb6gvKMRMDYERM=
+            -----END RSA PRIVATE KEY-----
+            EOF
+              
+              MASTER_IP=`ifconfig eno1 | grep netmask | tr -s ' ' | cut -d " " -f 3`
+              echo ""  > /home/"$line"/.ssh/config
+              cat > /home/"$line"/.ssh/config <<EOF
+            Host `echo $MASTER_IP  | sed 's/.[0-9][0-9]*$//g'`.* 0.0.0.0 master worker*
+               StrictHostKeyChecking no
+               UserKnownHostsFile=/dev/null
+            EOF
+
+              chown -R "$line":"$line" /home/"$line"/.ssh
+              chmod 600 /home/"$line"/.ssh/*
+              
+              echo "export JAVA_HOME=/usr/lib/jvm/jre" >> /home/"$line"/.bashrc
+              echo "export HADOOP_HOME=/usr/lib/${HADOOP_LATEST}" >> /home/"$line"/.bashrc
+              echo "export HADOOP_INSTALL=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+              echo "export HADOOP_MAPRED_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+              echo "export HADOOP_COMMON_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+              echo "export HADOOP_HDFS_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+              echo "export HADOOP_YARN_HOME=\$HADOOP_HOME" >> /home/"$line"/.bashrc
+              echo "export HADOOP_COMMON_LIB_NATIVE_DIR=\$HADOOP_HOME/lib/native" >> /home/"$line"/.bashrc
+              echo "export PATH=\$PATH:\$HADOOP_HOME/sbin:\$HADOOP_HOME/bin" >> /home/"$line"/.bashrc
+              echo "export JAVA_LIBRARY_PATH=\$HADOOP_HOME/lib/native:\$JAVA_LIBRARY_PATH" >> /home/"$line"/.bashrc
+
+              done
+
+            #install iptables
+            yum install iptables-services
+            systemctl enable iptables
+            
+            # Flush all current rules from iptables#
+            iptables -F
+            iptables -F -t nat
+            iptables --delete-chain
+            
+            # Set access for localhost
+            iptables -A INPUT -i lo -j ACCEPT -m comment --comment "loopback"
+            iptables -A OUTPUT -o lo -j ACCEPT --comment "loopback"
+            
+            # Subnet open access
+            iptables -A INPUT -s 192.168.100.0/24 -j ACCEPT -m comment --comment "subnet"
+            iptables -A OUTPUT -s 192.168.100.0/24 -j ACCEPT -m comment --comment "subnet"
+            
+            #drop icmp
+            iptables -A INPUT -p icmp --icmp-type any -j DROP -m comment --comment "ping"
+            
+            # Accept packets belonging to established and related connections
+            iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT -m comment --comment "established"
+            
+            # Allow ssh
+            iptables -A INPUT -m state --state NEW -m tcp -p tcp --dport 22 -j ACCEPT -m comment --comment "ssh"
+            
+            # Lock everything down
+            iptables -P INPUT DROP
+            iptables -P FORWARD DROP
+            iptables -P OUTPUT ACCEPT
+
+            #setup hadoop
+            yum install -y vim tzdata-java java-1.8.0-openjdk
+
+            tar -zxvf hadoop-*.*.*.tar.gz
+
+            install -Dv /dev/null $HADOOP_LATEST/logs/hadoop_boot.log
+            HADOOP_LOG='$HADOOP_LATEST/logs/hadoop_boot.log'
+ 
+            #Set permissions
+            chown -R hadoop:hadoop /usr/lib/$HADOOP_LATEST /usr/lib/hadoop
+            chmod -R 770 /usr/lib/$HADOOP_LATEST
+            chmod -R g+s /usr/lib/$HADOOP_LATEST
+            gpasswd -M hadoop,hdfs,yarn,mapred,cc,ccadmin hadoop
+
+            HADOOP_CONF_DIR=/usr/lib/${HADOOP_LATEST}/etc/hadoop
+            CORE_SITE_FILE=${HADOOP_CONF_DIR}/core-site.xml
+            HDFS_SITE_FILE=${HADOOP_CONF_DIR}/hdfs-site.xml
+            MAPRED_SITE_FILE=${HADOOP_CONF_DIR}/mapred-site.xml
+            YARN_SITE_FILE=${HADOOP_CONF_DIR}/yarn-site.xml
+            WORKERS_FILE=${HADOOP_CONF_DIR}/workers
+                        
+            echo ""  > $CORE_SITE_FILE
+            cat > $CORE_SITE_FILE   <<EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+            <configuration>
+            <property>
+              <name>fs.default.name</name>
+                <value>hdfs://master:9000</value>
+            </property>
+            </configuration>
+            EOF
+            
+            echo ""  > $HDFS_SITE_FILE
+            cat > $HDFS_SITE_FILE   <<EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+            <configuration>
+            <property>
+             <name>dfs.replication</name>
+             <value>2</value>
+            </property>
+            <property>
+              <name>dfs.name.dir</name>
+                <value>file:///usr/lib/hadoop/hadoopdata/hdfs/namenode</value>
+            </property>
+            <property>
+              <name>dfs.data.dir</name>
+                <value>file:///usr/lib/hadoop/hadoopdata/hdfs/datanode</value>
+            </property>
+            </configuration>
+            EOF
+            
+            echo ""  > $MAPRED_SITE_FILE
+            cat > $MAPRED_SITE_FILE   <<EOF
+            <configuration>
+              <property>
+              <name>mapreduce.framework.name</name>
+               <value>yarn</value>
+             </property>
+             <property>
+               <name>yarn.app.mapreduce.am.env</name>
+                 <value>HADOOP_MAPRED_HOME=/usr/lib/hadoop-3.2.0</value>
+             </property>
+             <property>
+               <name>mapreduce.map.env</name>
+                 <value>HADOOP_MAPRED_HOME=/usr/lib/hadoop-3.2.0</value>
+             </property>
+             <property>
+               <name>mapreduce.reduce.env</name>
+                 <value>HADOOP_MAPRED_HOME=/usr/lib/hadoop-3.2.0</value>
+            </property>
+            </configuration>
+            EOF
+            
+            echo ""  > $YARN_SITE_FILE
+            cat > $YARN_SITE_FILE  <<EOF
+            <?xml version="1.0"?>
+            <configuration>
+              <property>
+                <name>yarn.resourcemanager.resource-tracker.address</name>
+                <value>master:8031</value>
+              </property>
+              <property>
+                <name>yarn.resourcemanager.address</name>
+                <value>master:8032</value>
+              </property>
+              <property>
+                <name>yarn.resourcemanager.scheduler.address</name>
+                <value>master:8030</value>
+              </property>
+              <property>
+                <name>yarn.resourcemanager.admin.address</name>
+                <value>master:8033</value>
+              </property>
+              <property>
+                <name>yarn.resourcemanager.webapp.address</name>
+                <value>master:8088</value>
+              </property>
+            <property>
+              <name>yarn.nodemanager.aux-services</name>
+                <value>mapreduce_shuffle</value>
+             </property>
+              <property>
+                <name>yarn.nodemanager.vmem-check-enabled</name>
+                <value>false</value>
+              </property>
+              <property>
+                <name>yarn.nodemanager.pmem-check-enabled</name>
+                <value>true</value>
+              </property>
+            <property>
+              <name>yarn.nodemanager.vmem-pmem-ratio</name>
+                <value>2.1</value>
+             </property>
+            
+            
+            </configuration>
+            EOF
+            
+            MASTER_IP=`ifconfig eno1 | grep netmask | tr -s ' ' | cut -d " " -f 3`
+            echo ""  > /home/hadoop/.ssh/config
+            cat > /root/.ssh/config <<EOF
+            Host `echo $MASTER_IP  | sed 's/.[0-9][0-9]*$//g'`.* 0.0.0.0 master worker*
+               StrictHostKeyChecking no
+               UserKnownHostsFile=/dev/null
+            EOF
+            
+            echo $MASTER_IP master.novalocal master >> /etc/hosts
+            NODE_COUNT=`cat /tmp/client_ips.txt | tr -d "][," | wc -w`
+            for i in $(seq 1 $NODE_COUNT); do
+               IP=`cat /tmp/client_ips.txt | tr -d "\n][," | cut -d " " -f $i`
+               NODE=`cat /tmp/client_names.txt | tr -d "][," | cut -d " " -f $i`
+               echo $IP $NODE.novalocal $NODE >> /etc/hosts
+            done
+            
+            echo > $WORKERS_FILE
+            for i in $(seq 1 $NODE_COUNT); do
+               #NODE_NUM=$((i-1))
+               #NODE_NAME=worker-${NODE_NUM}
+               NODE_NAME=`cat /tmp/client_names.txt | tr -d "][," | cut -d " " -f $i`
+               scp -B -i /home/hadoop/.ssh/id_rsa /etc/hosts hadoop@${NODE_NAME}:.
+               ssh -i /home/hadoop/.ssh/id_rsa hadoop@${NODE_NAME} 'cat hosts > /etc/hosts'
+               echo ${NODE_NAME} >> $WORKERS_FILE
+            done
+
+            cd $CWD
+
+            #Start services (format first to prevent issues)
+            runuser -l hadoop -c 'hadoop namenode -format'
+            runuser -l hdfs -c '/usr/lib/hadoop-3.2.0/sbin/start-dfs.sh'
+            runuser -l yarn -c '/usr/lib/hadoop-3.2.0/sbin/start-yarn.sh'
+            runuser -l mapred -c '/usr/lib/hadoop-3.2.0//bin/mapred --daemon start historyserver'
+                        
+          params:
+            $worker_ips: { get_attr: [hadoop_workers, first_address] }
+            $worker_names: { get_attr: [hadoop_workers, name] }
+        
+  hadoop_master_ip_association:
+    type: OS::Nova::FloatingIPAssociation
+    properties:
+      floating_ip: { get_resource: hadoop_master_floating_ip }
+      server_id: { get_resource: hadoop_master }
+
+
+# The parameters section gathers configuration from the user.
+parameters:
+  hadoop_worker_count:
+    type: number
+    description: Number of NFS client instances
+    default: 2
+    constraints:
+      - range: { min: 1 }
+        description: There must be at least one client.
+  key_name:
+    type: string
+    description: Name of a KeyPair to enable SSH access to the instance
+    constraints:
+    - custom_constraint: nova.keypair
+  reservation_id:
+    type: string
+    description: ID of the Blazar reservation to use for launching instances.
+    constraints:
+    - custom_constraint: blazar.reservation
+  network_name:
+    type: string
+    description: Name of the network to use.
+  network_cidr:
+    type: string
+    description: Cidr of the network
+    default: 192.168.100.0/24
+
+outputs:
+  hadoop_master_ip:
+    description: Public IP address of the Hadoop master
+    value: { get_attr: [hadoop_master_floating_ip, ip] }
+  hadoop_worker_ips:
+    description: Private IP addresses of the Hadoop workers
+    value: { get_attr: [hadoop_workers, first_address] }
+
