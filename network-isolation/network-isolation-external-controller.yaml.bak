@@ -1,0 +1,204 @@
+description: Ryu OpenFlow controller deployed with Heat on Chameleon
+
+heat_template_version: ocata
+
+resources:
+  controller_floating_ip:
+   type: OS::Nova::FloatingIP
+   properties:
+     pool: public
+
+  controller:
+   type: OS::Nova::Server
+   properties:
+     name: controller
+     flavor: baremetal
+     image: CC-CentOS7
+     key_name: { get_param: key_name }
+     networks:
+        - network: { get_param: controller_network_name }
+     scheduler_hints: { reservation: { get_param: reservation_id } }
+     user_data:
+        str_replace:
+          template: |
+            #!/bin/bash
+            export CONTROLLER_PORT="$controller_port"
+            export CONTROLLER_APP="$controller_app"
+            export MIRROR_PORT="$mirror_port"
+            curl -L https://github.com/ChameleonCloud/heat-templates/archive/master.tar.gz \
+              | tar -C /srv -xvz --strip-components=1 heat-templates-master/network-isolation
+            pushd /srv/network-isolation
+            ./user_data_ryu_controller.sh > /tmp/boot.log 2>&1
+          params:
+            $controller_port: { get_param: controller_port }
+            $controller_app: { get_param: controller_app }
+            $mirror_port: { get_param: mirror_port }
+
+  controller_ip_association:
+    type: OS::Nova::FloatingIPAssociation
+    properties:
+      floating_ip: { get_resource: controller_floating_ip }
+      server_id: { get_resource: controller }
+
+  of_router_to_ext:
+    type: OS::Neutron::Router
+    properties:
+      name: router
+      external_gateway_info:
+        network: public
+
+  of_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet
+      cidr: { get_param: ip_subnet }
+      allocation_pools:
+        - start: { get_param: dhcp_first }
+          end: { get_param: dhcp_last }
+      enable_dhcp: true
+      dns_nameservers: ["8.8.8.8", "130.202.101.6", "130.202.101.37"]
+      network: { get_resource: of_network }
+
+  of_network:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: of_network_name }
+      shared: false
+      value_specs:
+        description:
+          str_replace:
+            template: OFController=IP:PORT
+            params:
+              IP: { get_attr: [controller_floating_ip, ip] }
+              PORT: { get_param: controller_port }
+        'provider:network_type': vlan
+        'provider:physical_network': { get_param: provider }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: of_router_to_ext }
+      subnet: { get_resource: of_subnet }
+
+  nodes:
+    type: OS::Heat::ResourceGroup
+    depends_on: controller
+    properties:
+      count: { get_param: node_count }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: node-%index%
+          flavor: baremetal
+          image: CC-CentOS7
+          key_name: { get_param: key_name }
+          networks:
+             - network: { get_resource: of_network }
+          scheduler_hints: { reservation: { get_param: reservation_id } }
+
+parameters:
+  key_name:
+    type: string
+    label: SSH key
+    description: Name of a keypair to enable SSH access to the instance
+    constraints:
+    - custom_constraint: nova.keypair
+  controller_network_name:
+    type: string
+    label: Controller node network
+    description: Name of the network used by the controller. This is NOT the new OpenFlow netork.
+    default: sharednet1
+    constraints:
+    - custom_constraint: neutron.network
+  controller_port:
+    type: string
+    label: OpenFlow controller port
+    description: The port used by the OpenFlow controller.
+    default: 6653
+  controller_app:
+    type: string
+    label: OpenFlow controller application
+    description: Ryu Application to run.
+    default: simple_switch_13_custom_chameleon.py
+  mirror_port:
+    type: string
+    label: Mirror port for IDS instance
+    description: Used only for mirror_switch_13.py application.
+    default: 10000
+  of_network_name:
+    type: string
+    label: OpenFlow network name
+    description: Name of the OpenFlow network that will be created.
+    default: byoc-net
+  provider:
+    type: string
+    label: Network provider
+    description: The provider network.
+    default: physnet1
+    constraints:
+    - allowed_values: [ physnet1, exogeni ]
+  ip_subnet:
+    type: string
+    label: OpenFlow network subnet (CIDR)
+    description: Subnet for the OpenFlow network
+    default: 10.200.201.0/24
+  dhcp_first:
+    type: string
+    label: DHCP range start
+    description: The first IP address of the DHCP range
+    default: 10.200.201.203
+  dhcp_last:
+    type: string
+    label: DHCP range end
+    description: The last IP address of the DHCP range
+    default: 10.200.201.250
+  node_count:
+    type: number
+    label: Network nodes
+    description: Number of extra nodes connected to the OpenFlow network.
+    default: 1
+    constraints:
+    - range: { min: 0 }
+  reservation_id:
+    type: string
+    label: Reservation
+    description: ID of the Blazar reservation to use for launching instances.
+    constraints:
+    - custom_constraint: blazar.reservation
+
+parameter_groups:
+- label: Ryu OpenFlow Controller Configuration
+  description: Ryu OpenFlow Controller Configuration
+  parameters:
+  - controller_network_name
+  - controller_port
+  - controller_app
+  - mirror_port
+- label: OpenFlow Network Configuration
+  description: OpenFlow Network Configuration
+  parameters:
+  - of_network_name
+  - ip_subnet
+  - provider
+  - dhcp_first
+  - dhcp_last
+- label: Node Configuration
+  description: Extra Nodes connected to the OpenFlow network
+  parameters:
+  - node_count
+- label: General Configuration
+  description: General parameters
+  parameters:
+  - key_name
+  - reservation_id
+
+outputs:
+  controller_ip:
+    description: Public IP address of the OpenFlow controller
+    value: { get_attr: [controller_floating_ip, ip] }
+  of_network_id:
+    description: Network ID to attach Nova instances
+    value: { get_resource: of_network }
+  node_ids:
+    description: IDs for additional server nodes connected to OpenFlow network
+    value: { get_attr: [nodes, refs] }
