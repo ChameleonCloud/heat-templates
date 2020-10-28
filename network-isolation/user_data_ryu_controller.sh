@@ -40,4 +40,7 @@ docker run --rm -dit \
   --name=$DOCKER_CONTAINER_NAME \
   $DOCKER_IMAGE
 
+echo "Opening OF controller port ..."
+ufw allow $OFP_TCP_LISTEN_PORT
+
 echo "Done."
