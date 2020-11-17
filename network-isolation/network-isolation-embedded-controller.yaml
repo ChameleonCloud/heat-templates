@@ -21,7 +21,7 @@ resources:
       cidr: { get_param: ip_subnet }
       allocation_pools: [{ "start": { get_param: dhcp_first }, "end": { get_param: dhcp_last } } ]
       enable_dhcp: true
-      dns_nameservers: ["8.8.8.8","130.202.101.6","130.202.101.37"]
+      dns_nameservers: ["8.8.8.8","8.8.4.4"]
       network: { get_resource: of_network }
 
   of_network:

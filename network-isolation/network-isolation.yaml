@@ -19,7 +19,7 @@ resources:
       network: { get_resource: isolated_net }
       cidr: { get_param: cidr_net }
       allocation_pools: [{ "start": { get_param: dhcp_first }, "end": { get_param: dhcp_last } } ]
-      dns_nameservers: [ 130.202.101.6, 130.202.101.37 ]
+      dns_nameservers: [ 8.8.8.8, 8.8.4.4 ]
       ip_version: 4
 
   # 3. Router
