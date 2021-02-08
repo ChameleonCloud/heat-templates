@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -e -u -o pipefail
 
-RECIPE_REPO="https://github.com/RENCI-NRIG/exogeni-recipes.git"
+RECIPE_REPO="--single-branch --branch pruth-update-ryu-to-faucetsdn-python3
+ https://github.com/RENCI-NRIG/exogeni-recipes.git"
 RECIPE_DIR="/opt/exogeni-recipes"
 RECIPE_APP="openflow-controller/docker"
 DOCKER_IMAGE="centos-ryu"
